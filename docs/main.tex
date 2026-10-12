@@ -1,0 +1,110 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{amsthm}
+\usepackage{fancyhdr}
+\setlength{\headheight}{22.48724pt}
+\usepackage[breaklinks]{hyperref}
+\usepackage[margin=1in]{geometry}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[scaled=0.85]{beramono} % Clean, modern monospaced font
+
+\usepackage[T1]{fontenc}
+\definecolor{codebg}{RGB}{255, 245, 255}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Maaz Mansuri \\ RFR27 new member-10}
+\fancyhead[R]{\thepage}
+
+\lstdefinelanguage{Zig}{
+    keywords={
+        const, var, fn, pub, return, if, else, while, for,
+        switch, struct, enum, union, error, defer, errdefer,
+        try, catch, unreachable, comptime, inline, asm,
+        break, continue, and, or, null, undefined, true, false
+    },
+    keywordstyle=\color{blue}\bfseries,
+    comment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{gray},
+    string=[b]",
+    stringstyle=\color{red},
+    basicstyle=\ttfamily\small,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    frame=single,
+    breaklines=true,
+    showstringspaces=false,
+    basicstyle=\ttfamily\small
+}
+
+\hypersetup{
+    colorlinks=true,
+    linktoc=section,
+    linkcolor=blue,
+}
+
+\title{2027 Digital Precharge}
+\author{Jeevan Shah}
+
+
+\begin{document}
+\begin{titlepage}
+	\centering
+	\vfill
+
+	{\Huge \textbf{RFR27 16-Channel Temperature Monitor New Member Project-10}\par}
+
+	\vspace{0.5cm}
+
+	{\Large Rutgers Formula Racing\par}
+
+	\vspace{0.5cm}
+
+	{\large Maaz Mansuri, Joshua Scallo, Fayella Fenton, Gavin Palacios \par}
+	{\large \today \par}
+
+	\vspace{2.5cm}
+
+	\includegraphics[width=0.5\textwidth]{RFR EV Logo White Bolt - Black Letters - Red Body.png}
+
+	\vfill
+\end{titlepage}
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+\section{Revision Log}
+\begin{tabular}{| c | c | c |}
+	\hline
+	Editor      & Date         & Revision \\
+	\hline
+	Maaz Mansuri & Oct. 12 2026 & Document Creation        \\
+	\hline
+\end{tabular}
+
+\section{Purpose}
+Create at 16 channel temperature monitor and transmit data over I2C Bus
+
+\section{Parties Involved}
+\begin{tabular}{| c | c | c |}
+	\hline
+	Name        & Team Role                            & Report Role \\
+	\hline
+	Maaz Mansuri & Software & Author      \\
+	\hline
+    Vaanika Singla & Electronics Lead & Reviewer \\
+    \hline
+    Jeevan Shah & Electronics Lead & Reviewer \\
+    \hline
+\end{tabular}
+
+
+\end{document}
