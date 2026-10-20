@@ -136,7 +136,7 @@ Create a 16-channel temperature monitor for the accumulator container and transm
 	\centering
 	\includegraphics[width=\linewidth]{arduino_temp_sensor_v2.pdf}
 	\caption{Schematic}
-	\label{fig:arduino_temp_sensor_v2}
+	\label{fig:arduino_temp_sensor_v3}
 \end{figure}
 
 Our schematic contains 16 temperature sensors represented by zener diodes, a 16-channel multiplexer (CD74HC4067SM96), signal conditioning circuitry, and an Arduino Nano. This design allows the use of the Arduino Nano's onboard ADC to collect the voltage readings from each temperature sensor one by one with help from the 16-channel multiplexer. This is achieved by connecting each channel of the multiplexer to a temperature sensor reading. These channels are then controlled by the firmware in the Arduino Nano's D2-D5 pins, where each chosen output of the multiplexer is first conditioned, then sent to the A0 pin of the Arduino Nano, where the voltage is gathered and tested through the firmware. The LED connected to the D7 pin then shines when the voltage reading scans as a temperature reading higher than 60 C.
