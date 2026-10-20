@@ -10,37 +10,42 @@
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage[scaled=0.85]{beramono} % Clean, modern monospaced font
+\usepackage{booktabs}
 
 \usepackage[T1]{fontenc}
-\definecolor{codebg}{RGB}{255, 245, 255}
+\definecolor{codebg}{RGB}{250, 250, 250}
+\definecolor{commentgreen}{RGB}{34, 139, 34}
+\definecolor{keywordblue}{RGB}{0, 0, 205}
+\definecolor{stringred}{RGB}{178, 34, 34}
+\definecolor{numbergray}{RGB}{128, 128, 128}
 
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{Maaz Mansuri, Fayella Fenton \\ RFR27 new member-10}
 \fancyhead[R]{\thepage}
 
-\lstdefinelanguage{Zig}{
-    keywords={
-        const, var, fn, pub, return, if, else, while, for,
-        switch, struct, enum, union, error, defer, errdefer,
-        try, catch, unreachable, comptime, inline, asm,
-        break, continue, and, or, null, undefined, true, false
-    },
-    keywordstyle=\color{blue}\bfseries,
-    comment=[l]{//},
-    morecomment=[s]{/*}{*/},
-    commentstyle=\color{gray},
-    string=[b]",
-    stringstyle=\color{red},
-    basicstyle=\ttfamily\small,
-    numbers=left,
-    numberstyle=\tiny\color{gray},
-    numbersep=8pt,
-    frame=single,
+% Configure Listings for Arduino C/C++
+\lstdefinestyle{arduinoStyle}{
+    backgroundcolor=\color{codebg},
+    commentstyle=\color{commentgreen}\itshape,
+    keywordstyle=\color{keywordblue}\bfseries,
+    numberstyle=\tiny\color{numbergray},
+    stringstyle=\color{stringred},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
     breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=7pt,
+    showspaces=false,
     showstringspaces=false,
-    basicstyle=\ttfamily\small
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{lightgray}
 }
+\lstset{style=arduinoStyle}
 
 \hypersetup{
     colorlinks=true,
@@ -50,7 +55,6 @@
 
 \title{2027 Digital Precharge}
 \author{Jeevan Shah}
-
 
 \begin{document}
 \begin{titlepage}
@@ -84,7 +88,7 @@
 \section{Revision Log}
 \begin{tabular}{| c | c | c |}
 	\hline
-	Editor      & Date         & Revision \\
+	Editor       & Date          & Revision \\
 	\hline
 	Maaz Mansuri & Oct. 12 2026 & Document Creation        \\
 	\hline
@@ -92,10 +96,14 @@
     \hline
     Fayella Fenton & Oct. 15 2026 & Inserted Source Refs \\
     \hline
+    Joshua Scallo & Oct. 17 2026 & Added schematic and hardware descriptions \\
+    \hline
+    Maaz Mansuri & Oct. 19 2026 & Completed firmware Design and added flowcharts for the circuit and the code \\
+    \hline
 \end{tabular}
 
 \section{Purpose}
-Create at 16 channel temperature monitor and transmit data over I2C Bus
+Create a 16-channel temperature monitor for the accumulator container and transmit pack thermal data over the I2C bus upon master query.
 
 \section{Parties Involved}
 \begin{tabular}{| c | c | c |}
@@ -104,6 +112,8 @@ Create at 16 channel temperature monitor and transmit data over I2C Bus
 	\hline
 	Maaz Mansuri & Software & Author      \\
 	\hline
+    Joshua Scallo & Hardware & Author \\
+    \hline
     Fayella Fenton & Hardware & Author \\
     \hline
     Vaanika Singla & Electronics Lead & Reviewer \\
@@ -112,18 +122,166 @@ Create at 16 channel temperature monitor and transmit data over I2C Bus
     \hline
 \end{tabular}
 
-\newpage
 
-\section{Hardware Design \& Signal Conditioning}
+\section{Hardware Design}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[height=0.65\textheight, width=0.85\linewidth, keepaspectratio]{circuitflowchart.png}
+    \caption{Hardware System Signal-Flow and Architecture Diagram}
+    \label{fig:hardware_flowchart}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\linewidth]{arduino_temp_sensor_v2.pdf}
+	\caption{Schematic}
+	\label{fig:arduino_temp_sensor_v2}
+\end{figure}
+
+Our schematic contains 16 temperature sensors represented by zener diodes, a 16-channel multiplexer (CD74HC4067SM96), signal conditioning circuitry, and an Arduino Nano. This design allows the use of the Arduino Nano's onboard ADC to collect the voltage readings from each temperature sensor one by one with help from the 16-channel multiplexer. This is achieved by connecting each channel of the multiplexer to a temperature sensor reading. These channels are then controlled by the firmware in the Arduino Nano's D2-D5 pins, where each chosen output of the multiplexer is first conditioned, then sent to the A0 pin of the Arduino Nano, where the voltage is gathered and tested through the firmware. The LED connected to the D7 pin then shines when the voltage reading scans as a temperature reading higher than 60 C.
 
 
-\section{Firmware and Software Design}
 
+\section{Firmware Design}
+
+\subsection{Introduction and Firmware Overview}
+The software is based on our planned wiring implementation and serves four main functions per the project instructions: reading each sensor's analog signal, converting it to a voltage, determining the highest temperature among the sensors, and reporting that value over I2C. While the original schematic includes a DC-DC converter and a 16:1 MUX, the converter is omitted here and an 8:1 MUX is used instead. This reduces the select pin count from four to three, while keeping the core firmware logic the same.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[height=1.0\textheight, width=0.85\linewidth, keepaspectratio]{flowchart.png}
+    \caption{Software Flowchart}
+    \label{fig:firmware_flowchart}
+\end{figure}
+
+The core execution loop performs the following operations:
+\begin{enumerate}
+    \item Iterates sequentially through channels 0 to 7 using the binary addresses from the select pins
+    \item Pauses for an explicit interval ($20\,\mu\text{s}$) to discharge/charge front-end capacitance before sampling.
+    \item Samples the conditioned analog node via \lstinline|analogRead(A0)| and converts the raw 10-bit count into an engineering voltage ($0.0\,\text{V} - 5.0\,\text{V}$).
+    \item Maps the measured voltage to temperature ($^\circ\text{C}$) based on the Enepaq sensor's temperature and voltage mapping datasheet.
+    \item Evaluates cell temperatures against $60^\circ\text{C}$ critical limit, asserting the fault LED on pin \lstinline|D7| if overheating is detected.
+    \item Stores the maximum pack temperature to prepare for for I2C request
+\end{enumerate}
+
+\subsection{Pin Mapping and Peripheral Allocation}
+To match the schematic in Figure~\ref{fig:arduino_temp_sensor_v2}, the hardware-to-software pin definitions are established as constants prior to compilation:
+
+\begin{table}[H]
+\centering
+\caption{Microcontroller Pin Allocation}
+\label{tab:pinout}
+\begin{tabular}{llll}
+\toprule
+\textbf{Constant Name} & \textbf{Nano Pin} & \textbf{Direction} & \textbf{Hardware Functional Description} \\
+\midrule
+\lstinline|muxSIG|   & A0 & Input  & Conditioned analog voltage from multiplexer op-amp stage \\
+\lstinline|muxS0|    & D2 & Output & Binary address select line: Bit 0 ($2^0$) \\
+\lstinline|muxS1|    & D3 & Output & Binary address select line: Bit 1 ($2^1$) \\
+\lstinline|muxS2|    & D4 & Output & Binary address select line: Bit 2 ($2^2$) \\
+\lstinline|muxS3|    & D5 & Output & Binary address select line: Bit 3 ($2^3$) \\
+\lstinline|faultLED| & D7 & Output & Over-temperature visual indicator LED \\
+\lstinline|SDA|      & A4 & Bidirectional & I2C Data line (configured automatically via \lstinline|Wire.h|) \\
+\lstinline|SCL|      & A5 & Input  & I2C Clock line (configured automatically via \lstinline|Wire.h|) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{lstlisting}[language=C++, caption={Pin definitions}, label={lst:pin_defs}]
+#include <Wire.h>
+//Defiing all of our pins here 
+
+Signal Pin from multiplexer to the Arduino
+const int muxSIG = A0; 
+
+Pins that will select what channel to read in binary
+const int muxS0 = 2;
+const int muxS1 = 3;
+const int muxS2 = 4;
+
+  
+//Defining address for Arduino as Slave
+const byte SLAVE_ADDRESS = 0x08;
+
+\end{lstlisting}
+
+\subsection{Overview of functions}
+
+\subsubsection{Channel Addressing: \lstinline|setMuxChannel|}
+The CD74HC4067 requires a 4-bit binary code on pins \lstinline|S0|--\lstinline|S3| to connect one of the 16 analog input channels to the common output pin. Instead of manually iterating through binary, we call this function to input the desired channel we want to read, and then it will convert it to the binary equivalent using Arduino's bit read function.
+
+\begin{lstlisting}[language=C++, caption={setMuxChannel Function}, label={lst:mux_code}]
+void setMuxChannel(byte channel)  {
+  //Allows you to input an integer and then it converts it into binary for the signal pins to read and select the channel
+    digitalWrite(muxS0, bitRead(channel, 0));
+    digitalWrite(muxS1, bitRead(channel, 1));
+    digitalWrite(muxS2, bitRead(channel, 2));
+}
+\end{lstlisting}
+
+\subsubsection{Signal Acquisition: \lstinline|readChannelVoltage|}
+This function switches the channel, pauses for the signal to stabilize, takes a 10-bit analog sample, and converts the integer output to a floating-point voltage:
+\begin{equation}
+    V_{\text{measured}} = \text{ADC} \times \left(\frac{5.0\,\text{V}}{1023.0}\right)
+\end{equation}
+
+\begin{lstlisting}[language=C++, caption={readChannelVoltage Function}, label={lst:read_voltage}]
+float readChannelVoltage(byte channel) {
+  setMuxChannel(channel);
+  delayMicroseconds(20); 
+
+  int rawADC = analogRead(muxSIG);
+  return (rawADC * 5.0f) / 1023.0f; //to scale the value and actually put it within our 0-5 range
+
+}
+\end{lstlisting}
+
+\subsubsection{Mapping our voltage readings into temperature values: \lstinline|voltagetoTemperature|}
+The Enepaq sensor have a table in the data sheet that map out the voltges readings to actually temperature with a certain range. The formula is yet to be determined, but once implemented the function will be able to take in the float voltage value and return a temperature value. 
+
+\begin{lstlisting}[language=C++, caption={Voltage to Temperature Conversion}, label={lst:v_to_t}]
+float voltagetoTemperature(float voltage) {
+    //Find the reference values and the formula to convert it
+    return 0.0f
+}
+\end{lstlisting}
+
+\subsubsection{I2C Implementation: \lstinline|requestData|}
+When the bus master addresses the slave node 0x08, the hardware triggers the request data function. 
+
+\begin{lstlisting}[language=C++, caption={I2C Slave Transmission Callback}, label={lst:i2c_req}]
+void requestData() {
+    // Send highest recorded pack temperature as a single byte
+    Wire.write(maxTempByte);
+}
+\end{lstlisting}
+
+\subsection{Architectural Decisions and Design Trade-offs}
+
+
+\subsubsection{Settling Delay Choice ($20\,\mu\text{s}$)}
+\begin{itemize}
+    \item \textbf{Context:} Inside the multiplexer, each switch adds about $70\,\Omega$ to $180\,\Omega$ of internal resistance ($R_{\text{ON}}$). This sits right before our input filter stage, which uses a $1\,\text{k}\Omega$ resistor and a $10\,\text{nF}$ capacitor before feeding the signal to the op-amp.
+    
+    \item \textbf{Alternative Considered:} Reading the ADC right after changing the channel address pins, with zero delay in between.
+    
+    \item \textbf{Decision \& Rationale:} If we sample immediately, voltage left over on the capacitor from the previous channel will bleed into the new reading. For example. The capacitor needs a moment to charge up to the new voltage level. We can find how long this takes using the circuit's RC time constant:
+    \begin{equation}
+        \tau = R_{\text{total}} \times C \approx (1000\,\Omega + 180\,\Omega) \times 10\,\text{nF} = 11.8\,\mu\text{s}
+    \end{equation}
+    Waiting $20\,\mu\text{s}$ gives the signal about $1.7\tau$ to settle down, ensuring our ADC reading reflects the true sensor voltage rather than residual charge from the channel before it. Across all 8 channels, this delay is negligible and we would not hinder our target of 1000hz sampling rate. 
+\end{itemize}
+
+\subsubsection{Data Typing and Precision (\lstinline|float| vs. \lstinline|int|)}
+\begin{itemize}
+    \item \textbf{Context:} Choosing the internal representation for voltage readings and temperature calculations.
+    \item \textbf{Decision \& Rationale:} With a sensitivity of $-9.5\,\text{mV/}^\circ\text{C}$, a $1^\circ\text{C}$ temperature delta corresponds to a minute voltage change ($\approx 1.94$ ADC counts). Using integer arithmetic would cause severe truncation errors, masking gradual thermal build-up. Single-precision 32-bit floating-point numbers (\lstinline|float|) are used for conversion math to preserve sub-degree precision for over-temperature detection.
+\end{itemize}
 
 \section{Verification, Calibration, \& Test Results}
 
-
-\section{Bill of Materials }
+\section{Bill of Materials}
 
 \newpage
 \section{Sources} 
@@ -134,7 +292,7 @@ Create at 16 channel temperature monitor and transmit data over I2C Bus
 
     \bibitem{youtube2} Electronoobs, \textit{Arduino Multiplexor - MUX INPUTS \& OUTPUTS - ANALOG and PWM}, YouTube, 2021. Available: \url{https://youtu.be/Dco6jo9xgAo}
 
-    \bibitem{i2c} Dejan, \textit{How I2C Communication Works?}, HowToMechatronics. Available. \url{https://howtomechatronics.com/tutorials/arduino/how-i2c-communication-works-and-how-to-use-it-with-arduino/}
+    \bibitem{i2c} Dejan, \textit{How I2C Communication Works?}, HowToMechatronics. Available: \url{https://howtomechatronics.com/tutorials/arduino/how-i2c-communication-works-and-how-to-use-it-with-arduino/}
     
     \bibitem{youtube3} CircuitBread, \textit{Intro to Op-Amps (Operational Amplifiers) | Basic Circuits}, YouTube, 2022. Available: \url{https://youtu.be/fmRHDqcodS4}
 
@@ -144,13 +302,10 @@ Create at 16 channel temperature monitor and transmit data over I2C Bus
 
     \bibitem{youtube4} RimstarOrg, \textit{How to Read a Schematic}, YouTube, 2014. Available: \url{https://youtu.be/_HZ-EQ8Hc8E}
 
-    \bibitem{youtube4} EEVblog, \textit{Playlist on DC Fundamentals}, YouTube, 2017. Available: \url{https://www.youtube.com/show/VLPLZJkSyc12jDY?sbp=KgtZZGJobm1BNE05Z0AB}
+    \bibitem{youtube5} EEVblog, \textit{Playlist on DC Fundamentals}, YouTube, 2017. Available: \url{https://www.youtube.com/show/VLPLZJkSyc12jDY?sbp=KgtZZGJobm1BNE05Z0AB}
 
     \bibitem[]{}\medskip\medskip\textbf{\large Arduino IDE}\medskip
 
-
 \end{thebibliography}
-
-
 
 \end{document}
