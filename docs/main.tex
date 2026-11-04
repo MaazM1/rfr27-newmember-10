@@ -21,7 +21,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{Maaz Mansuri, Fayella Fenton \\ RFR27 new member-10}
+\fancyhead[L]{Maaz Mansuri, Fayella Fenton, Joshua Scallo, Gavin Palacios \\ RFR27 new member-10}
 \fancyhead[R]{\thepage}
 
 % Configure Listings for Arduino C/C++
@@ -100,6 +100,8 @@
     \hline
     Maaz Mansuri & Oct. 19 2026 & Completed firmware Design and added flowcharts for the circuit and the code \\
     \hline
+    Joshua Scallo & Nov. 4 2026 & Updated schematic version and completed schematic design justifications.  \\
+    \hline
 \end{tabular}
 
 \section{Purpose}
@@ -134,17 +136,185 @@ Create a 16-channel temperature monitor for the accumulator container and transm
 
 \begin{figure}[H]
 	\centering
-	\includegraphics[width=\linewidth]{arduino_temp_sensor_v3.pdf}
+	\includegraphics[width=\linewidth]{arduino_temp_sensor_v4.pdf}
 	\caption{Schematic}
-	\label{fig:arduino_temp_sensor_v3}
+	\label{fig:arduino_temp_sensor_v4}
 \end{figure}
 
-Our schematic contains 16 temperature sensors represented by zener diodes, a 16-channel multiplexer (CD74HC4067SM96), signal conditioning circuitry, an Arduino Nano, and a buck converter(AP63205WU-7). This design allows the use of the Arduino Nano's onboard ADC to collect the voltage readings from each temperature sensor one by one with help from the 16-channel multiplexer. This is achieved by connecting each channel of the multiplexer to a temperature sensor reading. These channels are then controlled by the firmware in the Arduino Nano's D2-D5 pins, where each chosen output of the multiplexer is first conditioned, then sent to the A0 pin of the Arduino Nano, where the voltage is gathered and tested through the firmware. The LED connected to the D7 pin then shines when the voltage reading scans as a temperature reading higher than 60 C.
+\subsection{Introduction to Schematic Design}
+Our schematic design contains 16 temperature sensors represented by zener diodes, a 16-channel multiplexer (CD74HC4067SM96), signal conditioning circuitry, an Arduino Nano, and a buck converter (LMR50410Y5FQDBVRQ1). This design allows the use of the Arduino Nano's onboard ADC to collect the voltage readings from each temperature sensor one by one with help from the 16-channel multiplexer. This is achieved by connecting each channel of the multiplexer to a temperature sensor reading. These channels are then controlled by the firmware in the Arduino Nano's D2-D5 pins, where each chosen output of the multiplexer is first conditioned, then sent to the A0 pin of the Arduino Nano, where the voltage is gathered and tested through the firmware. The MOSFET-controlled LED connected to the D10 pin then shines when the voltage reading interprets a temperature reading higher than 60 C.
+
+\subsection{RC Filter}
+\begin{itemize}
+    \item RC filter's main intention is to smooth out the sharp changes from the MUX switching between channels.
+    \item $1\,\text{k}\Omega$ resistor will act as a current limiter. The resistor value cannot be too high, or it will affect the difference amplifier's $10\,\text{k}\Omega$ resistance value and mess with its overall gain. 
+    \item $10\,\text{nF}$ capacitor is chosen due to time constant ($\tau$).
+\end{itemize}
+\textbf{Cutoff Frequency:}
+\[
+f_c = \frac{1}{2\pi R C} \approx 15.9\,\text{kHz} \quad 
+\]
+
+\subsection{Difference Amplifier}
+\textbf{Temperature Sensor Voltage-Temperature Outputs:}
+\[
+\begin{array}{rccc}
+\text{Temperature:} & -40^\circ\text{C} & \longrightarrow 60^\circ\text{C} \longrightarrow & 120^\circ\text{C} \\
+\text{Output Voltage:} & 2.44\,\text{V} & \longrightarrow 1.81\,\text{V} \longrightarrow & 1.30\,\text{V} \\
+& (\text{min temp}) & (\text{target temp}) & (\text{max temp})
+\end{array}
+\]
+
+\vspace{0.5em}
+\noindent \textbf{Difference Amplifier Circuit Analysis:} \\
+Intended to create a $0\,\text{V} - 5\,\text{V}$ output range from the temperature sensor readings ($1.30\,\text{V} - 2.44\,\text{V}$).
+
+\noindent \textbf{Transfer Function:}
+\[
+V_O = \frac{R_2}{R_1} (V_{\text{MUX}} - V_{\text{REF}}) \quad \left(\text{where } \frac{R_2}{R_1} \text{ is gain } A\right)
+\]
+\[
+5 = A(2.44 - 1.3) \implies A = \frac{5\,\text{V}}{1.14\,\text{V}} \approx 4.386
+\]
+
+\noindent Using standard resistor values:
+\[
+R_1 = 10\,\text{k}\Omega \quad \text{and} \quad R_2 = 43\,\text{k}\Omega
+\]
+\[
+\frac{43\,\text{k}\Omega}{10\,\text{k}\Omega} = 4.3 \implies A = 4.3 \quad (\text{ideal gain is truncated down to avoid clipping above } 5\,\text{V})
+\]
 
 
+\subsection{Voltage Divider \& Buffer Op-Amp}
+\textbf{Voltage Divider Calculation:} \\
+We want $V_{\text{REF}} = 1.3\,\text{V}$:
+\[
+5 \left( \frac{R_2}{R_1 + R_2} \right) = 1.3\,\text{V}
+\]
+Using standard resistor values:
+\[
+R_2 = 13\,\text{k}\Omega \quad \text{and} \quad R_1 = 37\,\text{k}\Omega
+\]
 
-In actual implementation and firmware, we utilize an 8-channel multiplexer (CD4051BE). This change would reduce it to only 2 S pins (S0-S1) and 8 I pins (I0-I7).
+\vspace{0.5em}
+\noindent \textbf{Buffer Op-Amp Analysis:}
+\begin{itemize}
+    \item Buffer op-amp will prevent \textbf{voltage loading}.
+    \item Internal Thevenin resistance from $R_1$ \& $R_2$ of the voltage divider will affect the $R_1 / R_2$ ratio of the difference amplifier.
+    \item Buffering will create a clone $1.3\,\text{V}$ (provided by $5\,\text{V}$) that is clean like a $1.3\,\text{V}$ battery.
+\end{itemize}
 
+
+\subsection{Active Filtering ($2.2\,\text{nF}$ Capacitor)}
+\[
+gain(f) = \frac{R_f}{R_{\text{in}}}
+\]
+\[
+Z_F = \frac{R_f}{1 + j 2 \pi f R_f C_F} \quad \text{with } C_F = 2.2\,\text{nF}
+\]
+\[
+f_0 = \frac{1}{2 \pi R_f C_F} \approx 1.682\,\text{kHz}
+\]
+\[
+Z_f = 0\,\Omega \quad @ \quad f = 0\,\text{Hz}
+\]
+\[
+Z_f = 43\,\text{k}\Omega \quad @ \quad f \approx 1.68\,\text{kHz}
+\]
+\begin{itemize}
+    \item This means higher frequencies will short-circuit $R_f$, which will make the gain equal zero.
+    \item This allows higher frequencies to be eliminated.
+\end{itemize}
+
+\subsection{Settling Time Analysis}
+
+Settling time exists due to the time it takes for the filter's capacitors to charge/discharge every time the multiplexer switches channels.
+
+\noindent Capacitor follows an exponential charging curve:
+\[
+V(t) = V_S \left(1 - e^{-t/\tau}\right) \quad (\tau \text{ is time constant})
+\]
+For an accurate reading from the 10-bit ADC on the Arduino, we need to consider the ADC resolution:
+\[
+\frac{1}{2^{10}} = 0.000977 = 0.0977\%
+\]
+To prevent sensor voltage reading overlap (crosstalk), the filter has to settle within $0.0977\%$ of its final value.
+
+\noindent We need to find how many time constants are needed to reduce the error below $\frac{1}{2^{10}}$:
+\[
+e^{-t/\tau} = \frac{1}{2^{10}} \implies \ln\left(e^{t/\tau}\right) = \ln\left(2^{10}\right)
+\]
+\[
+\frac{t}{\tau} = 10 \ln(2) \approx 6.93 \implies t \approx 6.93\tau
+\]
+To prevent errors, round up: $t = 7\tau$.
+
+\subsubsection*{Hardware Settling Breakdown}
+\begin{itemize}
+    \item \textbf{RC Filter:}
+    \[
+    7\tau_1 = 7(1\,\text{k}\Omega \times 10\,\text{nF}) = 70\,\mu\text{s}
+    \]
+    \item \textbf{Active Feedback:}
+    \[
+    7\tau_2 = 7(43\,\text{k}\Omega \times 2.2\,\text{nF}) = 662.2\,\mu\text{s}
+    \]
+    \item \textbf{Total Hardware Settling Time:}
+    \[
+    70\,\mu\text{s} + 662.2\,\mu\text{s} = \underline{732.2\,\mu\text{s}}
+    \]
+\end{itemize}
+
+\subsection{Verifying 1000Hz Sampling Rate}
+
+\begin{itemize}
+    \item $1000\,\text{Hz}$ sampling rate means it takes $1000$ samples per second across all channels ($1\,\text{ms}$ per channel).
+    \item Selecting MUX switch takes $1\,\mu\text{s}$ (based off datasheet).
+    \item Executing ADC conversion takes $112\,\mu\text{s}$ (ranges from $100\,\mu\text{s} - 125\,\mu\text{s}$).
+    \item With our total hardware settling time being $732.2\,\mu\text{s}$...
+\end{itemize}
+
+\[
+t_{\text{tot}} = 1\,\mu\text{s} + 112\,\mu\text{s} + 732.2\,\mu\text{s} = 845.2\,\mu\text{s} = 0.8452\,\text{ms} < 1\,\text{ms} \quad
+\]
+
+\noindent With a headroom of $154.8\,\mu\text{s}$, it is safe to say it will achieve $1000\,\text{Hz}$ sampling rate.
+
+Note that this does not include delays included in our firmware design. If we include the added delay to account for the capacitor settling delay ($20 \mu\text{s}$) we still will achieve the desired sampling rate. 
+
+\subsection{Buck Converter}
+To verify that our buck converter (LMR50410Y5FQDBVRQ1) will work with our design, we need to validate the overall output current, which, according to the provided datasheet, needs to be less than 1A.
+\subsubsection*{Total Output Currents}
+\begin{itemize}
+    \item \textbf{MOSFET LED:}
+    \[
+    \frac{5V-2V}{220\Omega} = 13.6mA 
+    \]
+    (2V is the max forward voltage drop from a Red LED)
+    \item \textbf{Temperature Sensors:}
+    \[
+    \frac{5V-0.7V}{1000\Omega+680\Omega} = 2.56mA
+    \]
+    \item \textbf{x2 LM358 Op-Amps}
+    \[
+    2\times 150\mu A = 0.3mA
+    \]
+    \item \textbf{Multiplexer:} 0.008mA (quiescent device current)
+
+    \item \textbf{Arduino Nano:} 50mA (CPU consumption)
+    \item \textbf{Total:}
+    \[
+    13mA + 2.56mA + 0.3mA + 0.008mA + 50mA = 65.868mA < 1A
+    \]
+\end{itemize}
+This is well under the limit of 1A
+\subsection{Schematic Changes in Implementation}
+
+\begin{itemize}
+    \item In actual implementation, we utilize an 8-channel multiplexer (CD4051BE). This change would reduce it to only 2 select line pins (S0-S1) and 8 data input pins (I0-I7), which is reflected in our firmware design structure. 
+    \item The buck converter is also not included in our implementation; rather, the Arduino Nano is powered through a laptop USB-C connection. 
+\end{itemize}
 
 
 \section{Firmware Design}
