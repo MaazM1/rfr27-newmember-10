@@ -11,6 +11,9 @@
 \usepackage{xcolor}
 \usepackage[scaled=0.85]{beramono} % Clean, modern monospaced font
 \usepackage{booktabs}
+\usepackage{tabularx} 
+\usepackage{colortbl}
+
 
 \usepackage[T1]{fontenc}
 \definecolor{codebg}{RGB}{250, 250, 250}
@@ -101,6 +104,8 @@
     Maaz Mansuri & Oct. 19 2026 & Completed firmware Design and added flowcharts for the circuit and the code \\
     \hline
     Joshua Scallo & Nov. 4 2026 & Updated schematic version and completed schematic design justifications.  \\
+    \hline
+	Joshua Scallo & Nov. 9 2026 & Added complete BOM  \\
     \hline
 \end{tabular}
 
@@ -457,7 +462,34 @@ void requestData() {
 
 \section{Bill of Materials}
 
+The following table itemizes all electronics required within our schematic. This BOM excludes some common found passive components (Through-hole resistors, capacitors, and LED diode), as well as the provided temperature sensors. All component prices and part numbers are sourced from Digikey. 
+
+\begin{table}[htbp]
+\centering
+\caption{Project Bill of Materials (BOM)}
+\label{tab:project_bom}
+\small
+\begin{tabularx}{\textwidth}{c l >{\raggedright\arraybackslash}X c r r l}
+\toprule
+\textbf{Item \#} & \textbf{Category} & \textbf{Vendor / SKU} & \textbf{Qty} & \textbf{Unit (\$)} & \textbf{Total (\$)} & \textbf{Status} \\
+\midrule
+A-01 & Development Boards & Arduino / A000005 & 1 & \$25.70 & \$25.70 & In Stock \\
+A-02 & Voltage Regulators & Texas Instruments / 296-LMR50410Y5FQDBVRQ1TR-ND & 1 & \$2.32 & \$2.32 & In Stock \\
+A-03 & Op Amps & Texas Instrument / 296-47593-2-ND & 1 & \$0.33 & \$0.33 & In Stock \\
+A-04 & Multiplexers & Texas Instruments / 296-2057-5-ND & 1 & \$0.94 & \$0.94 & In Stock \\
+A-05 & MOSFETs & Diotec Semiconductor / 4878-2N7000CT-ND & 1 & \$0.29 & \$0.29 & In Stock \\
+\midrule
+\multicolumn{6}{r}{\textbf{Subtotal:}} & \$29.58 & \\
+\multicolumn{6}{r}{\textbf{Est. Shipping:}} & \$8.49 & \\
+\multicolumn{6}{r}{\textbf{Tariff:}} & \$0.26 & \\
+\midrule
+\multicolumn{6}{r}{\textbf{Est. Total Cost:}} & \textbf{\$38.33} & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \newpage
+
 \section{Sources} 
 \begin{thebibliography}{9}
 
