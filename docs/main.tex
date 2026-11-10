@@ -56,8 +56,7 @@
     linkcolor=blue,
 }
 
-\title{2027 Digital Precharge}
-\author{Jeevan Shah}
+
 
 \begin{document}
 \begin{titlepage}
@@ -107,6 +106,8 @@
     \hline
 	Joshua Scallo & Nov. 9 2026 & Added complete BOM  \\
     \hline
+    Maaz Mansuri & Nov. 10 2026 & Updated code and revised explanations for firmware design\\
+    \hline
 \end{tabular}
 
 \section{Purpose}
@@ -134,7 +135,7 @@ Create a 16-channel temperature monitor for the accumulator container and transm
 
 \begin{figure}[H]
     \centering
-    \includegraphics[height=0.65\textheight, width=0.85\linewidth, keepaspectratio]{circuitflowchart.png}
+    \includegraphics[height=0.90\textheight, width=0.85\linewidth, keepaspectratio]{circuitflowchart.png}
     \caption{Hardware System Signal-Flow and Architecture Diagram}
     \label{fig:hardware_flowchart}
 \end{figure}
@@ -325,7 +326,7 @@ This is well under the limit of 1A
 \section{Firmware Design}
 
 \subsection{Introduction and Firmware Overview}
-The software is based on our planned wiring implementation and serves four main functions per the project instructions: reading each sensor's analog signal, converting it to a voltage, determining the highest temperature among the sensors, and reporting that value over I2C. While the original schematic includes a DC-DC converter and a 16:1 MUX, the converter is omitted here and an 8:1 MUX is used instead. This reduces the select pin count from four to three, while keeping the core firmware logic the same.
+The software is based on our planned wiring implementation and serves four main functions per the project instructions: reading each sensor's analog signal, converting it to a voltage, determining the highest, lowest, and average temperature among the sensors, via linear interpolation,  and reporting that value over I2C. While the original schematic includes a DC-DC converter and a 16:1 MUX, the converter is omitted here and an 8:1 MUX is used instead. This reduces the select pin count from four to three, while keeping the core firmware logic the same. An overview of our software from a high level is shown below in figure 3. 
 
 \begin{figure}[H]
     \centering
@@ -345,7 +346,7 @@ The core execution loop performs the following operations:
 \end{enumerate}
 
 \subsection{Pin Mapping and Peripheral Allocation}
-To match the schematic in Figure~\ref{fig:arduino_temp_sensor_v2}, the hardware-to-software pin definitions are established as constants prior to compilation:
+To match the schematic in Figure~\ref{fig:arduino_temp_sensor_v2}, the hardware pin configuration are mapped out as followed:
 
 \begin{table}[H]
 \centering
@@ -355,14 +356,14 @@ To match the schematic in Figure~\ref{fig:arduino_temp_sensor_v2}, the hardware-
 \toprule
 \textbf{Constant Name} & \textbf{Nano Pin} & \textbf{Direction} & \textbf{Hardware Functional Description} \\
 \midrule
-\lstinline|muxSIG|   & A0 & Input  & Conditioned analog voltage from multiplexer op-amp stage \\
+\lstinline|muxSIG|   & A0 & Input  & Conditioned analog voltage from multiplexer \\
 \lstinline|muxS0|    & D2 & Output & Binary address select line: Bit 0 ($2^0$) \\
 \lstinline|muxS1|    & D3 & Output & Binary address select line: Bit 1 ($2^1$) \\
 \lstinline|muxS2|    & D4 & Output & Binary address select line: Bit 2 ($2^2$) \\
 \lstinline|muxS3|    & D5 & Output & Binary address select line: Bit 3 ($2^3$) \\
-\lstinline|faultLED| & D7 & Output & Over-temperature visual indicator LED \\
-\lstinline|SDA|      & A4 & Bidirectional & I2C Data line (configured automatically via \lstinline|Wire.h|) \\
-\lstinline|SCL|      & A5 & Input  & I2C Clock line (configured automatically via \lstinline|Wire.h|) \\
+\lstinline|faultLED| & D7 & Output & Visual Indicator for overheating\\
+\lstinline|SDA|      & A4 & Bidirectional & I2C Data line  \\
+\lstinline|SCL|      & A5 & Input  & I2C Clock line \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -388,7 +389,7 @@ const byte SLAVE_ADDRESS = 0x08;
 \subsection{Overview of functions}
 
 \subsubsection{Channel Addressing: \lstinline|setMuxChannel|}
-The CD74HC4067 requires a 4-bit binary code on pins \lstinline|S0|--\lstinline|S3| to connect one of the 16 analog input channels to the common output pin. Instead of manually iterating through binary, we call this function to input the desired channel we want to read, and then it will convert it to the binary equivalent using Arduino's bit read function.
+The 8:1 Multiplexer needs a 3 bit binary value to select the channel. Instead of manually iterating through binary, we call this function to input the desired channel we want to read as a byte, and then it will convert it to the binary equivalent using Arduino's bit read function.
 
 \begin{lstlisting}[language=C++, caption={setMuxChannel Function}, label={lst:mux_code}]
 void setMuxChannel(byte channel)  {
@@ -400,10 +401,8 @@ void setMuxChannel(byte channel)  {
 \end{lstlisting}
 
 \subsubsection{Signal Acquisition: \lstinline|readChannelVoltage|}
-This function switches the channel, pauses for the signal to stabilize, takes a 10-bit analog sample, and converts the integer output to a floating-point voltage:
-\begin{equation}
-    V_{\text{measured}} = \text{ADC} \times \left(\frac{5.0\,\text{V}}{1023.0}\right)
-\end{equation}
+This function switches the channel, pauses for the signal to stabilize, takes a 10-bit analog sample, and converts the integer output to a floating point voltage using the voltagetoTemperature helper function. 
+
 
 \begin{lstlisting}[language=C++, caption={readChannelVoltage Function}, label={lst:read_voltage}]
 float readChannelVoltage(byte channel) {
@@ -411,54 +410,78 @@ float readChannelVoltage(byte channel) {
   delayMicroseconds(20); 
 
   int rawADC = analogRead(muxSIG);
-  return (rawADC * 5.0f) / 1023.0f; //to scale the value and actually put it within our 0-5 range
-
+  return voltagetoTemperature(rawADC);
 }
 \end{lstlisting}
+
 
 \subsubsection{Mapping our voltage readings into temperature values: \lstinline|voltagetoTemperature|}
-The Enepaq sensor have a table in the data sheet that map out the voltges readings to actually temperature with a certain range. The formula is yet to be determined, but once implemented the function will be able to take in the float voltage value and return a temperature value. 
+
+
+Since the ADC doesn't give us a voltage value that's scaled correctly, we have to rescale it from 0-5V using the following equation. 
+
+\begin{equation}
+    V_{\text{measured}} = \text{ADC} \times \left(\frac{5.0\,\text{V}}{1023.0}\right)
+\end{equation}
+
+
+
+
+Once the value is converted, we use linear interpolation to map out the voltage from the lookup table given in the Enepaq data sheet, and convert the scaled value to the temperature. 
+
+Note: In our actual implementation we used 4.850 V as our ceiling voltage. The theoretical value of the voltage reading from the Adruino Nano is 5V, however, after testing the value with the multimeter, we find that it actually outputs 4.850 V
 
 \begin{lstlisting}[language=C++, caption={Voltage to Temperature Conversion}, label={lst:v_to_t}]
-float voltagetoTemperature(float voltage) {
-    //Find the reference values and the formula to convert it
-    return 0.0f
+float voltagetoTemperature(int rawADC) {
+//Converts rawADC value to actual voltage value between 0-5 volts
+//It will be between 1.30V to 2.44V based on the diode
+  float volt = (rawADC * 4.850f) / 1024.0f;
+  //Linear interpolation using the two datasheet coordinates
+  // (-40°C @ 2.44V) and (120°C @ 1.30V)
+  const float V_cold = 2.44f;
+  const float V_hot  = 1.30f;
+  const float T_cold = -40.0f;
+  const float T_hot  = 120.0f;
+
+  float slope = (T_hot - T_cold) / (V_hot - V_cold); // ~ -140.3509 C/V. 
+  //For every voltage increase there is a -140 decrease in temperature. (negative slope)
+  float temp  = T_cold + slope * (volt - V_cold);
+  return temp;
 }
 \end{lstlisting}
+
+Note: Our linear interpolation is very rough. We took data points from the highest and lowest temperature and found the slope creating a straight line curve to map the voltage. This is not reflective of the actual curve, and so our conversion values will be off. If given more time/AI assistance, we would create a struct and include all of the values from the look up table, then linear interpolate between neighboring points by looping through our array of temperature and voltages. 
+
+
 
 \subsubsection{I2C Implementation: \lstinline|requestData|}
 When the bus master addresses the slave node 0x08, the hardware triggers the request data function. 
 
 \begin{lstlisting}[language=C++, caption={I2C Slave Transmission Callback}, label={lst:i2c_req}]
 void requestData() {
-    // Send highest recorded pack temperature as a single byte
-    Wire.write(maxTempByte);
+  //send avg, highest, and lowest temperatures over I2C
+  Wire.write((byte*)&avgTemp, sizeof(avgTemp));
+  Wire.write((byte*)&maxTemp, sizeof(maxTemp));
+  Wire.write((byte*)&minTemp, sizeof(minTemp));
 }
 \end{lstlisting}
 
-\subsection{Architectural Decisions and Design Trade-offs}
+\subsection{Design Choices}
 
 
 \subsubsection{Settling Delay Choice ($20\,\mu\text{s}$)}
 \begin{itemize}
-    \item \textbf{Context:} Inside the multiplexer, each switch adds about $70\,\Omega$ to $180\,\Omega$ of internal resistance ($R_{\text{ON}}$). This sits right before our input filter stage, which uses a $1\,\text{k}\Omega$ resistor and a $10\,\text{nF}$ capacitor before feeding the signal to the op-amp.
+    \item \textbf{Context:} Inside the multiplexer, each switch adds about $70\,\Omega$ to $180\,\Omega$ of internal resistance  This sits right before our input filter stage, which uses a $1\,\text{k}\Omega$ resistor and a $10\,\text{nF}$ capacitor before feeding the signal to the op-amp.
     
     \item \textbf{Alternative Considered:} Reading the ADC right after changing the channel address pins, with zero delay in between.
     
-    \item \textbf{Decision \& Rationale:} If we sample immediately, voltage left over on the capacitor from the previous channel will bleed into the new reading. For example. The capacitor needs a moment to charge up to the new voltage level. We can find how long this takes using the circuit's RC time constant:
+    \item \textbf{Decision \& Rationale:} If we sample immediately, voltage left over on the capacitor from the previous channel will bleed into the new reading. The capacitor needs a moment to charge up to the new voltage level. We can find how long this takes using the circuit's RC time constant:
     \begin{equation}
         \tau = R_{\text{total}} \times C \approx (1000\,\Omega + 180\,\Omega) \times 10\,\text{nF} = 11.8\,\mu\text{s}
     \end{equation}
     Waiting $20\,\mu\text{s}$ gives the signal about $1.7\tau$ to settle down, ensuring our ADC reading reflects the true sensor voltage rather than residual charge from the channel before it. Across all 8 channels, this delay is negligible and we would not hinder our target of 1000hz sampling rate. 
 \end{itemize}
 
-\subsubsection{Data Typing and Precision (\lstinline|float| vs. \lstinline|int|)}
-\begin{itemize}
-    \item \textbf{Context:} Choosing the internal representation for voltage readings and temperature calculations.
-    \item \textbf{Decision \& Rationale:} With a sensitivity of $-9.5\,\text{mV/}^\circ\text{C}$, a $1^\circ\text{C}$ temperature delta corresponds to a minute voltage change ($\approx 1.94$ ADC counts). Using integer arithmetic would cause severe truncation errors, masking gradual thermal build-up. Single-precision 32-bit floating-point numbers (\lstinline|float|) are used for conversion math to preserve sub-degree precision for over-temperature detection.
-\end{itemize}
-
-\section{Verification, Calibration, \& Test Results}
 
 \section{Bill of Materials}
 
@@ -490,6 +513,7 @@ A-05 & MOSFETs & Diotec Semiconductor / 4878-2N7000CT-ND & 1 & \$0.29 & \$0.29 &
 
 \newpage
 
+\newpage
 \section{Sources} 
 \begin{thebibliography}{9}
 
