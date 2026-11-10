@@ -15,6 +15,8 @@
   const int numChannels = 8;
   float temperatures[numChannels];
 
+  const int gain = 4.3;
+
   const float overheatTemp = 60.0f; // Critical limit (°C)
 
   const int faultLED = 7;
@@ -22,7 +24,17 @@
   
   //Defining address for Arduino as Slave
   const byte SLAVE_ADDRESS = 0x08;
+  float avgTemp = 0.0f;
+  float maxTemp = -999.0f;
+  float minTemp = 999.0f;
 
+  //Creating an object for the linear interpolation
+  struct table {
+    float voltage;
+    float temperature;
+  };
+
+  
   void setMuxChannel(byte channel);
   void requestData();
   void blinkFaultLED();  
@@ -45,9 +57,7 @@ void setup() {
 
   //Setting up Adruino as slave and preparing it for requests
   Wire.begin(SLAVE_ADDRESS);
-
-  //Commenting out until we're ready to test I2C
-  //Wire.onRequest(requestData);
+  Wire.onRequest(requestData);
 
 }
 
@@ -71,17 +81,19 @@ void setMuxChannel(byte channel)  {
 
 
 void requestData() {
-  //send highest temperature over I2C
-  
+  //send avg, highest, and lowest temperatures over I2C
+  Wire.write((byte*)&avgTemp, sizeof(avgTemp));
+  Wire.write((byte*)&maxTemp, sizeof(maxTemp));
+  Wire.write((byte*)&minTemp, sizeof(minTemp));
 }
 
 void blinkFaultLED() {
   //Use this function to blink the LED fault, use with IF statement inside loop
-  for(int i = 0; i < 4; i++){ //remove loop if only want to blink once
+  for(int i = 0; i < 6; i++){ //remove loop if only want to blink once
     digitalWrite(faultLED, HIGH);
-    delay(30);
+    delay(150);
     digitalWrite(faultLED, LOW);
-    delay(30);
+    delay(150);
   }
   
 }
@@ -90,17 +102,29 @@ void blinkFaultLED() {
 //Helper function for reading the channel voltage 
 //Takes in the rawADC value and then converts to temperature value in Celsius, using linear interpolation
 float voltagetoTemperature(int rawADC) {
-  float volt = (rawADC * 4.91) / 1024;
-  float temp = (volt/4.91)* -160.0 + 120.0;
+//Converts rawADC value to actual voltage value between 0-5 volts
+//It will be between 1.30V to 2.44V based on the diode
+  float volt = (rawADC * 4.850f) / 1024.0f;
+ 
+
+  //Linear interpolation using the two datasheet coordinates
+  // (-40°C @ 2.44V) and (120°C @ 1.30V)
+  const float V_cold = 2.44f;
+  const float V_hot  = 1.30f;
+  const float T_cold = -40.0f;
+  const float T_hot  = 120.0f;
+
+  float slope = (T_hot - T_cold) / (V_hot - V_cold); // ~ -140.3509 C/V. 
+  //For every voltage increase there is a -140 decrease in temperature. (negative slope)
+  float temp  = T_cold + slope * (volt - V_cold);
   return temp;
-  
 }
 
 
 void loop() {
   //Starting Values to compare to when trying to store maximum and minimum values 
-  float maxTemp = -999.0f;
-  float minTemp = 999.0f;
+  maxTemp = -999.0f;
+  minTemp = 999.0f;
   float sumTemp = 0.0f;
 
   // put your main code here, to run repeatedly:
@@ -109,13 +133,22 @@ void loop() {
   //Calculate the highest temperature, lowest, and the average
   //Check if we have to blink the fault LED 
 
+
   for (byte ch = 0; ch < numChannels; ch++) {
     temperatures[ch] = readChannelVoltage(ch); 
+
+    float chVoltage = (analogRead(A0) * 4.86f) / 1024.0f;
+
     Serial.print("Channel ");
     Serial.print(ch); 
-    Serial.print(": ");
-    Serial.print(temperatures[ch],2);
+    Serial.print(" | Volt: ");
+    Serial.print(chVoltage, 2);
+    Serial.print(" V | Temp: ");
+    Serial.print(temperatures[ch], 2);
     Serial.println(" °C");
+
+    //Delay to be able to read input and testing, for max sampling rate remove this delay
+    //delay(500);
 
     if(temperatures[ch] > maxTemp) {
       maxTemp = temperatures[ch];
@@ -130,9 +163,16 @@ void loop() {
 
     sumTemp = sumTemp + temperatures[ch];
 
-    delay(200);
+    //delay(200);
   }
-      float avgTemp = sumTemp/numChannels;
 
+  avgTemp = sumTemp / numChannels;
+  Serial.print("AVG: ");
+  Serial.print(avgTemp, 2);
+  Serial.print(" °C | MAX: ");
+  Serial.print(maxTemp, 2);
+  Serial.print(" °C | MIN: ");
+  Serial.print(minTemp, 2);
+  Serial.println(" °C\n");
 
 }
